@@ -1,0 +1,34 @@
+:root {
+  --bg: #0c0c0f;
+  --bg-elevated: #141419;
+  --bg-input: #1a1a21;
+  --border: #2a2a33;
+  --text: #e8e8ed;
+  --text-muted: #8888a0;
+  --accent: #c9a227;
+  --accent-dim: #8a7220;
+  --user-bubble: #1e2a3a;
+  --assistant-bubble: #1a1a21;
+  --error: #c94a4a;
+  --radius: 12px;
+  --font: 'Outfit', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
