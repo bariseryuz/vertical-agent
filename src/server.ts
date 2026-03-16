@@ -37,7 +37,7 @@ async function getShiimanKnowledgeBase() {
 
             INTERNAL STRATEGY & NOTES:
             ${notesRaw}
-        `.substring(0, 12000); // Increased limit slightly
+        `.substring(0, 6000); // Keep smaller for faster inference
     } catch (err) {
         console.error("Knowledge Base Error:", err);
         return "No internal knowledge available.";
@@ -77,36 +77,69 @@ const authenticateProject = async (req: AuthenticatedRequest, res: Response, nex
     }
 };
 
-// --- 3. THE CLEVER ENDPOINT: Now uses Memory + AI ---
+const buildPrompt = (internalKnowledge: string, projectIdentity: string, task: string, leadData: unknown) => `
+SYSTEM: You are the Shiiman Intelligence Agent. Use the instruction provided to give asked accurate details.
+
+INTERNAL KNOWLEDGE: 
+${internalKnowledge}
+
+---
+PROJECT CONTEXT: ${projectIdentity}
+CURRENT TASK: ${task || 'Summarize and score this lead'}
+NEW LEAD DATA: ${JSON.stringify(leadData)}
+
+INSTRUCTION: If this lead looks similar to one in our PAST CASE STUDIES, mention it. 
+Identify if this lead is a high-priority opportunity based on our STRATEGY NOTES.`;
+
+// --- 3a. STREAMING ENDPOINT (fast perceived response) ---
+app.post('/api/v1/analyze/stream', authenticateProject, async (req: AuthenticatedRequest, res: Response) => {
+    const { leadData, task } = req.body;
+    const internalKnowledge = await getShiimanKnowledgeBase();
+    const prompt = buildPrompt(internalKnowledge, req.projectIdentity!, task || '', leadData ?? {});
+
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    try {
+        console.log(`🧠 [stream] project: [${req.projectIdentity}] model: ${SHIIMAN_MODEL}`);
+        const stream = await ollama.generate({
+            model: SHIIMAN_MODEL,
+            prompt,
+            stream: true,
+            options: { num_predict: 1024 }, // cap length for faster replies
+        });
+        let full = '';
+        for await (const chunk of stream) {
+            if (chunk.response) {
+                full += chunk.response;
+                res.write(JSON.stringify({ chunk: chunk.response }) + '\n');
+                (res as any).flush?.();
+            }
+        }
+        res.write(JSON.stringify({ done: true, result: full }) + '\n');
+        res.end();
+    } catch (error) {
+        console.error("AI Error:", error);
+        res.write(JSON.stringify({ error: "AI Processing Failed" }) + '\n');
+        res.end();
+    }
+});
+
+// --- 3b. NON-STREAMING ENDPOINT (same as before) ---
 app.post('/api/v1/analyze', authenticateProject, async (req: AuthenticatedRequest, res: Response) => {
     const { leadData, task } = req.body;
-
-    // Fetch memory before generating answer
     const internalKnowledge = await getShiimanKnowledgeBase();
-
+    const prompt = buildPrompt(internalKnowledge, req.projectIdentity!, task || '', leadData ?? {});
 
     try {
         console.log(`🧠 AI is thinking for project: [${req.projectIdentity}] using [${SHIIMAN_MODEL}]`);
-
         const response = await ollama.generate({
             model: SHIIMAN_MODEL,
-            prompt: `
-                SYSTEM: You are the Shiiman Intelligence Agent. Use the instruction provided to give asked accurate details.
-                
-                INTERNAL KNOWLEDGE: 
-                ${internalKnowledge}
-
-                
-
-                ---
-                PROJECT CONTEXT: ${req.projectIdentity}
-                CURRENT TASK: ${task || 'Summarize and score this lead'}
-                NEW LEAD DATA: ${JSON.stringify(leadData)}
-
-                INSTRUCTION: If this lead looks similar to one in our PAST CASE STUDIES, mention it. 
-                Identify if this lead is a high-priority opportunity based on our STRATEGY NOTES.`
+            prompt,
+            options: { num_predict: 1024 },
         });
-
         res.json({ 
             success: true,
             project: req.projectIdentity,

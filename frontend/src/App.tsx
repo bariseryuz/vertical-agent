@@ -48,8 +48,11 @@ export default function App() {
     setTask('');
     setLoading(true);
 
+    const assistantId = crypto.randomUUID();
+    setMessages((m) => [...m, { id: assistantId, role: 'assistant', content: '' }]);
+
     try {
-      const res = await fetch('/api/v1/analyze', {
+      const res = await fetch('/api/v1/analyze/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -57,25 +60,76 @@ export default function App() {
         },
         body: JSON.stringify({ task: trimmed, leadData }),
       });
-      const data = await res.json();
 
       if (!res.ok) {
-        setMessages((m) => [
-          ...m,
-          { id: crypto.randomUUID(), role: 'assistant', content: data?.error || `Error ${res.status}`, error: true },
-        ]);
+        const data = await res.json().catch(() => ({}));
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === assistantId ? { ...msg, content: data?.error || `Error ${res.status}`, error: true } : msg
+          )
+        );
         return;
       }
 
-      setMessages((m) => [
-        ...m,
-        { id: crypto.randomUUID(), role: 'assistant', content: data.result || 'No response.' },
-      ]);
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) {
+        setMessages((m) =>
+          m.map((msg) => (msg.id === assistantId ? { ...msg, content: 'No response body.', error: true } : msg))
+        );
+        return;
+      }
+
+      let acc = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const lines = (acc + decoder.decode(value, { stream: true })).split('\n');
+        acc = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.chunk) {
+              setMessages((m) =>
+                m.map((msg) => (msg.id === assistantId ? { ...msg, content: msg.content + data.chunk } : msg))
+              );
+            }
+            if (data.error) {
+              setMessages((m) =>
+                m.map((msg) => (msg.id === assistantId ? { ...msg, content: data.error, error: true } : msg))
+              );
+            }
+          } catch {
+            /* skip malformed line */
+          }
+        }
+      }
+      if (acc.trim()) {
+        try {
+          const data = JSON.parse(acc);
+          if (data.chunk) {
+            setMessages((m) =>
+              m.map((msg) => (msg.id === assistantId ? { ...msg, content: msg.content + data.chunk } : msg))
+            );
+          }
+          if (data.done && data.result) {
+            setMessages((m) =>
+              m.map((msg) => (msg.id === assistantId ? { ...msg, content: data.result } : msg))
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+      }
     } catch (err) {
-      setMessages((m) => [
-        ...m,
-        { id: crypto.randomUUID(), role: 'assistant', content: `Request failed. Is the backend running on port 3000? ${err instanceof Error ? err.message : ''}`, error: true },
-      ]);
+      setMessages((m) =>
+        m.map((msg) =>
+          msg.id === assistantId
+            ? { ...msg, content: `Request failed. Is the backend running on port 3000? ${err instanceof Error ? err.message : ''}`, error: true }
+            : msg
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -100,12 +154,14 @@ export default function App() {
             <p>Ask for lead analysis or a summary. Use the knowledge base by setting a task and optional lead data (JSON).</p>
           </div>
         )}
-        {messages.map((msg) => (
-          <div key={msg.id} style={msg.role === 'user' ? userBubbleStyle : assistantBubbleStyle(msg.error)}>
-            {msg.content}
-          </div>
-        ))}
-        {loading && <div style={assistantBubbleStyle(false)}>Thinking…</div>}
+        {messages.map((msg) => {
+          const isStreamingEmpty = loading && msg.role === 'assistant' && !msg.content && messages[messages.length - 1]?.id === msg.id;
+          return (
+            <div key={msg.id} style={msg.role === 'user' ? userBubbleStyle : assistantBubbleStyle(!!msg.error)}>
+              {isStreamingEmpty ? '…' : msg.content}
+            </div>
+          );
+        })}
         <div ref={bottomRef} />
       </main>
 
