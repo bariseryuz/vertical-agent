@@ -1,0 +1,26 @@
+
+| Command | Description |
+|--------|-------------|
+| `npx tsx src/server.ts` | Start the API server |
+| `npx tsx src/admin.ts "ProjectName"` | Issue a new API key |
+| `npx tsx src/engine.ts` | Run ReAct pipeline (see inline task in file) |
+| `npx tsx src/agent.ts` | Run agent with tools (search/scrape/maps) |
+
+
+To Generate API Key 
+npx tsx src/admin.ts 'Ranch_Dashboard_Team'  
+
+
+
+08.08.2026 
+-Converted to API Key Model so it can be integrated. 
+
+
+09.03.2026
+-Added educated logic to Agent - Shiiman 
+-From now on Agent will read the note.md and dataempire.json to be more educated each time it runs something.
+
+10.03.26
+-Integrated Maps API Key.
+-Integrated Serpent API Key. (To further check on the browser.)
+-Converted database to vectoral ones. To prevent further crashes when we reach to wide datasets.

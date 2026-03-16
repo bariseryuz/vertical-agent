@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Environment & secrets (never commit)
+.env
+.env.local
+.env.*.local
+api_keys.json
+
+# Local data / runtime
+dataempire.json
+shiiman_leads.json
+notes.md
+
+# ChromaDB persistence (optional; uncomment if you store DB locally)
+# chroma_data/
+
+# Build & IDE
+dist/
+build/
+*.log
+.DS_Store
+Thumbs.db
+
+# Optional: keep if you want to ignore frontend build
+# frontend/dist/
+# frontend/node_modules/
